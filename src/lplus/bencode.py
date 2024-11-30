@@ -39,7 +39,7 @@ def maybe_parse(stream: BinaryIO) -> Optional[BencodeTypes]:
 		if nextchar != b"e":
 			raise ValueError(f"expected 'e', read {nextchar}")
 
-		return value
+		return value * sign
 	
 	elif char == b"l":
 		value = []
@@ -84,5 +84,4 @@ def parse(stream: BinaryIO) -> BencodeTypes:
 if __name__ == "__main__":
 	test = open("archlinux-2024.11.01-x86_64.iso.torrent", "rb")
 	res = parse(test)
-	assert(test.read(1) == b"") # check we really were at eof
 	print(res)
