@@ -1,0 +1,26 @@
+[build-system]
+requires = [
+	"setuptools>=61.0"
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lplus"
+version = "0.0.1"
+authors = [
+ 	{ name="David Buchanan", email="d@vidbuchanan.co.uk" },
+]
+description = "A toy bittorrent client"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+	"Programming Language :: Python :: 3",
+	"License :: OSI Approved :: MIT License",
+	"Operating System :: OS Independent",
+]
+dependencies = [
+]
+
+[project.urls]
+Homepage = "https://github.com/DavidBuchanan314/Lplus"
+Issues = "https://github.com/DavidBuchanan314/Lplus/issues"
