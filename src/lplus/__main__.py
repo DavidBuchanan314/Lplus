@@ -5,3 +5,4 @@ if __name__ == "__main__":
 	info = MetaInfo.from_bencoded(test)
 	print("announce:", info.announce)
 	print("name:    ", info.info.name)
+	print("infohash:", info.info_hash.hex())

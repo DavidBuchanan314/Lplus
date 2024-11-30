@@ -1,4 +1,5 @@
 from typing import BinaryIO, Optional
+import io
 
 DIGITS = b"0123456789"
 
@@ -51,6 +52,8 @@ def maybe_parse(stream: BinaryIO) -> Optional[BencodeTypes]:
 		value = {}
 		prevk = None
 		while (k := maybe_parse(stream)) is not None:
+			if not isinstance(k, bytes):
+				raise ValueError("bad dict key type")
 			if prevk is not None:
 				if k <= prevk:
 					raise ValueError("non-canonical dict key order")
@@ -81,7 +84,45 @@ def parse(stream: BinaryIO) -> BencodeTypes:
 	return res
 
 
+def serialise_into_stream(stream: BinaryIO, obj: BencodeTypes) -> None:
+	match obj:
+		case bytes():
+			stream.write(str(len(obj)).encode())
+			stream.write(b":")
+			stream.write(obj)
+		case int():
+			stream.write(b"i")
+			stream.write(str(obj).encode())
+			stream.write(b"e")
+		case list():
+			stream.write(b"l")
+			for item in obj:
+				serialise_into_stream(stream, item)
+			stream.write(b"e")
+		case dict():
+			stream.write(b"d")
+			for k, v in sorted(obj.items()):
+				if not isinstance(k, bytes):
+					raise ValueError("bad dict key type")
+				serialise_into_stream(stream, k)
+				serialise_into_stream(stream, v)
+			stream.write(b"e")
+		case _:
+			raise ValueError(f"don't know how to bencode {type(obj)}")
+
+
+def serialise(obj: BencodeTypes) -> bytes:
+	res = io.BytesIO()
+	serialise_into_stream(res, obj)
+	return res.getvalue()
+
+
 if __name__ == "__main__":
-	test = open("archlinux-2024.11.01-x86_64.iso.torrent", "rb")
-	res = parse(test)
+	test = open("archlinux-2024.11.01-x86_64.iso.torrent", "rb").read()
+
+	res = parse(io.BytesIO(test))
 	print(res)
+
+	roundtrip = io.BytesIO()
+	serialise_into_stream(roundtrip, res)
+	assert(test == roundtrip.getvalue())

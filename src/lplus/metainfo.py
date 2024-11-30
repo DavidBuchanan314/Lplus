@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import BinaryIO, List
+import hashlib
 
 from . import bencode
 
@@ -36,11 +37,16 @@ class Info:
 class MetaInfo:
 	announce: str
 	info: Info
+	info_hash: bytes
 
 	@classmethod
 	def from_bencoded(cls, stream: BinaryIO):
 		parsed = bencode.parse(stream)
+		info_dict = parsed[b"info"]
+		info_bytes = bencode.serialise(info_dict)
+		info_hash = hashlib.sha1(info_bytes).digest()
 		return cls(
 			announce=parsed[b"announce"].decode(),
-			info=Info.from_dict(parsed[b"info"]),
+			info=Info.from_dict(info_dict),
+			info_hash=info_hash
 		)
