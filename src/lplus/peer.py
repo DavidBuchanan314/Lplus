@@ -21,7 +21,7 @@ class MsgType(Enum):
 	PIECE = 7
 	CANCEL = 8
 
-PROTOCOL_MAGIC = b"19BitTorrent protocol"
+PROTOCOL_MAGIC = b"\x13BitTorrent protocol"
 
 @dataclass
 class PeerInfo:
@@ -52,6 +52,7 @@ class PeerSession:
 		try:
 			# TODO: wrap in timeout?
 			await self._send_message(MsgType.REQUEST, b"".join(i.to_bytes(4, "big") for i in req))
+			print("sent request for piece")
 			return await q.get()
 		finally:
 			del self.inflight_requests[req]
@@ -65,12 +66,16 @@ class PeerSession:
 	async def __aenter__(self) -> Self:
 		await self._connect()
 		await self._handshake()
-		self.recv_task = self._recvloop()
+		self.recv_task = asyncio.create_task(self._recvloop())
 		return self
 
 	async def __aexit__(self, exc_type, exc, tb):
-		await self.writer.close()
-		await self.recv_task
+		self.writer.close()
+		self.recv_task.cancel()
+		try:
+			await self.recv_task
+		except asyncio.CancelledError:
+			pass
 
 	async def _connect(self) -> None:
 		self.reader, self.writer = await asyncio.open_connection(self.peer.ip_addr, self.peer.port)
@@ -80,6 +85,7 @@ class PeerSession:
 		self.writer.write(PROTOCOL_MAGIC)
 		self.writer.write(bytes(8)) # reserved bytes
 		self.writer.write(self.ts.meta.info_hash)
+		self.writer.write(self.ts.peer_id)
 		
 		magic_recv = await self.reader.readexactly(len(PROTOCOL_MAGIC))
 		if magic_recv != PROTOCOL_MAGIC:
@@ -90,12 +96,16 @@ class PeerSession:
 		hash_recv = await self.reader.readexactly(20)
 		if hash_recv != self.ts.meta.info_hash:
 			raise ValueError("handshake infohash did not match")
+		peer_recv = await self.reader.readexactly(20)
+		if peer_recv != self.peer.peer_id:
+			raise ValueError("remote peer id did not match")
 		
 		print(f"handshook with {self.peer}")
 
 		await self._send_message(MsgType.BITFIELD, self.ts.saved_pieces.buffer)
 	
 	async def _send_message(self, msgtype: MsgType, payload: bytes) -> None:
+		# TODO: prevent these getting sent prematurely?
 		self.writer.write((1 + len(payload)).to_bytes(4, "big"))
 		self.writer.write(bytes([msgtype.value]))
 		self.writer.write(payload)
@@ -110,6 +120,8 @@ class PeerSession:
 			
 			msgtype = MsgType((await self.reader.readexactly(1))[0])
 			payload = await self.reader.readexactly(msg_len - 1)
+
+			print("recvd", msgtype)
 			
 			if msgtype == MsgType.CHOKE:
 				assert(len(payload) == 0)
@@ -131,7 +143,6 @@ class PeerSession:
 				assert(len(payload) == len(self.peer_pieces.buffer))
 				self.peer_pieces.buffer = bytearray(payload) # XXX: this invalidates the num_bits_set counter!!!
 			elif msgtype == MsgType.REQUEST:
-				print("received a request")
 				pass # TODO: respond to requests!!!
 			elif msgtype == MsgType.PIECE:
 				index = int.from_bytes(payload[:4], "big")

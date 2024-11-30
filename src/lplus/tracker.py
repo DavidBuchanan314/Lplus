@@ -9,11 +9,11 @@ from .metainfo import MetaInfo
 from .peer import PeerInfo
 
 
-async def get_peerlist(meta: MetaInfo) -> List[PeerInfo]:
+async def get_peerlist(meta: MetaInfo, peer_id: bytes) -> List[PeerInfo]:
 	async with aiohttp.ClientSession() as session: # TODO: reuse sessions? (would require passing it in)
 		params = {
 			"info_hash": meta.info_hash,
-			"peer_id": os.urandom(20), # TODO: persist this!
+			"peer_id": peer_id,
 			#"ip": "TODO?",
 			"port": 42069,
 			"uploaded": 0,

@@ -1,6 +1,7 @@
 import hashlib
 from typing import Self
 import time
+import os
 
 from tqdm import tqdm
 
@@ -25,6 +26,7 @@ class TorrentSession:
 		print()
 
 		self.saved_pieces = Bitmap(len(self.meta.info.pieces))
+		self.peer_id = os.urandom(20)
 		self.start_time = time.time()
 
 	async def __aenter__(self) -> Self:
@@ -38,7 +40,7 @@ class TorrentSession:
 			hash_now = hashlib.sha1(piece).digest()
 			self.saved_pieces[i] = hash_now == expected
 
-		self.peerlist = await tracker.get_peerlist(self.meta)
+		self.peerlist = await tracker.get_peerlist(self.meta, self.peer_id)
 
 		for peer in self.peerlist:
 			print(peer)
