@@ -45,6 +45,8 @@ class PeerSession:
 
 	async def request(self, index: int, begin: int, length: int) -> bytes:
 		req = (index, begin, length)
+		if req in self.inflight_requests:
+			raise Exception("there's a request for that already in-flight")
 		q = asyncio.Queue()
 		self.inflight_requests[req] = q
 		try:
@@ -53,6 +55,12 @@ class PeerSession:
 			return await q.get()
 		finally:
 			del self.inflight_requests[req]
+
+	async def set_choked(self, is_choked: bool):
+		await self._send_message(MsgType.CHOKE if is_choked else MsgType.UNCHOKE, b"")
+
+	async def set_interested(self, is_interested: bool):
+		await self._send_message(MsgType.INTERESTED if is_interested else MsgType.NOT_INTERESTED, b"")
 
 	async def __aenter__(self) -> Self:
 		await self._connect()

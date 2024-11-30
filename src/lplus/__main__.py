@@ -10,8 +10,10 @@ async def main():
 		assert(len(ipv4_peers) >= 1)
 		async with PeerSession(ts, ipv4_peers[0]) as ps:
 			print("connected to peer")
+			await ps.set_interested(True)
+			print("said we're interested")
 			res = await ps.request(0, 0, 2**14)
-			print("got piece!", len(res))
+			print("got (part of) a piece!", len(res))
 			while True:
 				ts.print_status()
 				await asyncio.sleep(1)
