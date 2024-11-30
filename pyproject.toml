@@ -19,6 +19,8 @@ classifiers = [
 	"Operating System :: OS Independent",
 ]
 dependencies = [
+	"aiohttp",
+	"tqdm"
 ]
 
 [project.urls]

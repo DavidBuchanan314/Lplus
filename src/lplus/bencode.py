@@ -42,13 +42,13 @@ def maybe_parse(stream: BinaryIO) -> Optional[BencodeTypes]:
 
 		return value * sign
 	
-	elif char == b"l":
+	elif char == b"l": # list
 		value = []
 		while (obj := maybe_parse(stream)) is not None:
 			value.append(obj)
 		return value
 	
-	elif char == b"d":
+	elif char == b"d": # dict
 		value = {}
 		prevk = None
 		while (k := maybe_parse(stream)) is not None:
@@ -76,7 +76,9 @@ def definitely_parse(stream: BinaryIO) -> BencodeTypes:
 
 
 # same as definitely_parse but we check we parsed all the way until the end of the stream
-def parse(stream: BinaryIO) -> BencodeTypes:
+def parse(stream: BinaryIO | bytes) -> BencodeTypes:
+	if isinstance(stream, bytes):
+		stream = io.BytesIO(stream)
 	res = definitely_parse(stream)
 	trailer = stream.read(1)
 	if trailer:
