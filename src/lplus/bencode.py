@@ -12,42 +12,49 @@ def maybe_parse(stream: BinaryIO) -> Optional[BencodeTypes]:
 	if char in DIGITS: # reading "string" type (parsed as bytes)
 		length = int(char)
 		if length: # only length that's allowed to start with 0 is 0 itself
-			while (nextchar := stream.read(1)) in DIGITS:
-				length = (length * 10) + int(nextchar)
-		if nextchar != b":":
-			raise ValueError(f"expected ':', read {nextchar}")
+			while (char := stream.read(1)) in DIGITS:
+				length = (length * 10) + int(char)
+		else:
+			char = stream.read(1)
+		if char != b":":
+			raise ValueError(f"expected ':', read {char}")
 		value = stream.read(length)
 		if len(value) != length:
 			raise ValueError("string underread")
 		return value
 
 	elif char == b"i": # integer
-		first_digit = stream.read(1)
-		if first_digit == b"-":
+		char = stream.read(1)
+		if char == b"-":
 			sign = -1
-			first_digit = stream.read(1)
+			char = stream.read(1)
 		else:
 			sign = 1
 		
-		if first_digit in DIGITS:
-			value = int(first_digit)
+		if char in DIGITS:
+			value = int(char)
 		else:
-			raise ValueError(f"expected digit, read {first_digit}")
+			raise ValueError(f"expected digit, read {char}")
 		
 		if value:
-			while (nextchar := stream.read(1)) in DIGITS:
-				value = (value * 10) + int(nextchar)
-		if nextchar != b"e":
-			raise ValueError(f"expected 'e', read {nextchar}")
+			while (char := stream.read(1)) in DIGITS:
+				value = (value * 10) + int(char)
+		else:
+			char = stream.read(1)
+		if char != b"e":
+			raise ValueError(f"expected 'e', read {char}")
+
+		if sign == -1 and value == 0:
+			raise ValueError("-0 is not allowed")
 
 		return value * sign
-	
+
 	elif char == b"l": # list
 		value = []
 		while (obj := maybe_parse(stream)) is not None:
 			value.append(obj)
 		return value
-	
+
 	elif char == b"d": # dict
 		value = {}
 		prevk = None
