@@ -7,8 +7,9 @@ async def main():
 		try:
 			while True:
 				ts.print_status()
-				for peer, session in ts.peer_sessions.items():
-					print(peer, session.peer_pieces.num_set_bits / session.peer_pieces.length)
+				for ps in ts.peer_sessions.values():
+					#print(peer, session.peer_pieces.num_set_bits / session.peer_pieces.length)
+					ps.print_status()
 				await asyncio.sleep(1)
 		except asyncio.CancelledError: # Ctrl+C
 			print("bye")

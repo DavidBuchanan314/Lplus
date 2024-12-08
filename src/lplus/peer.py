@@ -82,6 +82,8 @@ class PeerSession:
 			await self.recv_task
 		except asyncio.CancelledError:
 			pass
+		except asyncio.exceptions.IncompleteReadError:
+			pass # because we closed the socket
 		except Exception as e:
 			print(self.peer, e)
 
@@ -155,6 +157,8 @@ class PeerSession:
 					index = int.from_bytes(payload[:4], "big")
 					begin = int.from_bytes(payload[4:8], "big")
 					piece = payload[8:]
+					self.downloaded += len(piece)
+					self.ts.downloaded += len(piece)
 					request = (index, begin, len(piece))
 					if request not in self.inflight_requests:
 						print(self.peer, "received a piece we weren't expecting, discarding")
@@ -166,3 +170,6 @@ class PeerSession:
 					raise NotImplementedError(f"unreachable??? {msgtype}")
 		finally:
 			self.writer.close()
+
+	def print_status(self):
+		print(f"{self.peer} up:{self.uploaded} down:{self.downloaded} {self.peer_pieces.num_set_bits / self.peer_pieces.length * 100:.2f}%")

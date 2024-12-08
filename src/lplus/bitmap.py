@@ -16,6 +16,12 @@ class Bitmap:
 		byte_idx, bit_idx = self._get_index(item)
 		return bool((self.buffer[byte_idx] >> bit_idx) & 1)
 
+	def __contains__(self, item: int) -> bool:
+		try:
+			return self[item]
+		except IndexError:
+			return False
+
 	def __setitem__(self, item: int, value: bool) -> None:
 		byte_idx, bit_idx = self._get_index(item)
 		val = self.buffer[byte_idx]
