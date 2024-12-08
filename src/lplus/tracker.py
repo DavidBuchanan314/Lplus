@@ -1,6 +1,7 @@
 import aiohttp
 import yarl
 import os
+import socket
 from urllib.parse import urlencode
 from typing import List
 
@@ -21,7 +22,7 @@ async def get_peerlist(meta: MetaInfo, peer_id: bytes) -> List[PeerInfo]:
 			"left": 2773874688,
 			"event": "started",
 			#"key": "djackjasdlfkajhdflakjhsdfl",
-			#"compact": 1,
+			"compact": 1,
 			#"numwant": 100
 		}
 		# we have to encode manually to bypass aiohttp "requoting"
@@ -32,11 +33,36 @@ async def get_peerlist(meta: MetaInfo, peer_id: bytes) -> List[PeerInfo]:
 				raise Exception("http error")
 			res = await resp.read()
 			body = bencode.parse(res)
-			return [
+			if isinstance(body[b"peers"], list): # not-compact mode
+				return [
+					PeerInfo(
+						ip_addr=peer[b"ip"].decode(),
+						port=int(peer[b"port"])
+					)
+					for peer in body[b"peers"]
+				]
+
+			assert(isinstance(body[b"peers"], bytes))
+			assert(len(body[b"peers"]) % 6 == 0)
+			peers = [
 				PeerInfo(
-					ip_addr=peer[b"ip"].decode(),
-					port=int(peer[b"port"]),
-					peer_id=peer[b"peer id"]
+					ip_addr=socket.inet_ntoa(body[b"peers"][i:i+4]),
+					port=int.from_bytes(body[b"peers"][i+4:i+6])
 				)
-				for peer in body[b"peers"]
+				for i in range(0, len(body[b"peers"]), 6)
 			]
+
+			if b"peers6" not in body:
+				return peers
+
+			assert(isinstance(body[b"peers6"], bytes))
+			assert(len(body[b"peers6"]) % 18 == 0)
+			peers6 = [
+				PeerInfo(
+					ip_addr=socket.inet_ntop(socket.AF_INET6, body[b"peers6"][i:i+16]),
+					port=int.from_bytes(body[b"peers6"][i+16:i+18])
+				)
+				for i in range(0, len(body[b"peers6"]), 18)
+			]
+
+			return peers + peers6

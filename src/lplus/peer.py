@@ -23,36 +23,42 @@ class MsgType(Enum):
 
 PROTOCOL_MAGIC = b"\x13BitTorrent protocol"
 
-@dataclass
+@dataclass(frozen=True)
 class PeerInfo:
 	ip_addr: str
 	port: int
-	peer_id: bytes
+	#peer_id: bytes
 
 # TODO: make this abstraction work for *listening* on a port, too
 class PeerSession:
-	def __init__(self, ts: "TorrentSession", peer: PeerInfo) -> None:
+	uploaded: int = 0
+	downloaded: int = 0
+
+	choked: bool = True  # choked = "I don't want to send right now"
+	interested: bool = False # interested = "I want to receive data"
+
+	peer_choked: bool = True
+	peer_interested: bool = False
+
+	inflight_requests: Dict[Tuple[int, int, int], asyncio.Queue[bytes]] = {} # (index, begin, length)
+
+	def __init__(self, ts: "TorrentSession", peer: PeerInfo, timeout: int=10) -> None:
 		self.ts = ts
 		self.peer = peer
-		self.choked = True  # choked = "I don't want to send right now"
-		self.interested = False # interested = "I want to receive data"
+		self.timeout = timeout
 
 		self.peer_pieces = Bitmap(len(self.ts.meta.info.pieces))
-		self.peer_choked = True
-		self.peer_interested = False
 
-		self.inflight_requests: Dict[Tuple[int, int, int], asyncio.Queue[bytes]] = {} # (index, begin, length)
-
-	async def request(self, index: int, begin: int, length: int, timeout: int=10) -> bytes:
+	async def request(self, index: int, begin: int, length: int) -> bytes:
 		req = (index, begin, length)
 		if req in self.inflight_requests:
 			raise Exception("there's a request for that already in-flight")
 		q = asyncio.Queue()
 		self.inflight_requests[req] = q
 		try:
-			async with asyncio.timeout(timeout):
+			async with asyncio.timeout(self.timeout):
 				await self._send_message(MsgType.REQUEST, b"".join(i.to_bytes(4, "big") for i in req))
-				print("sent request for piece")
+				print(self.peer, "sent request for piece")
 				return await q.get()
 		finally:
 			del self.inflight_requests[req]
@@ -64,10 +70,11 @@ class PeerSession:
 		await self._send_message(MsgType.INTERESTED if is_interested else MsgType.NOT_INTERESTED, b"")
 
 	async def __aenter__(self) -> Self:
-		await self._connect()
-		await self._handshake()
-		self.recv_task = asyncio.create_task(self._recvloop())
-		return self
+		async with asyncio.timeout(self.timeout):
+			await self._connect()
+			await self._handshake()
+			self.recv_task = asyncio.create_task(self._recvloop())
+			return self
 
 	async def __aexit__(self, exc_type, exc, tb):
 		self.writer.close()
@@ -79,7 +86,7 @@ class PeerSession:
 
 	async def _connect(self) -> None:
 		self.reader, self.writer = await asyncio.open_connection(self.peer.ip_addr, self.peer.port)
-		print("connected")
+		print(self.peer, "connected")
 	
 	async def _handshake(self) -> None:
 		self.writer.write(PROTOCOL_MAGIC)
@@ -92,15 +99,13 @@ class PeerSession:
 			raise ValueError("handshake: bad magic")
 		rsvd = await self.reader.readexactly(8)
 		if any(rsvd):
-			print("WARNING: nonzero reserved bytes:", rsvd.hex())
+			print(self.peer, "WARNING: nonzero reserved bytes:", rsvd.hex())
 		hash_recv = await self.reader.readexactly(20)
 		if hash_recv != self.ts.meta.info_hash:
 			raise ValueError("handshake infohash did not match")
-		peer_recv = await self.reader.readexactly(20)
-		if peer_recv != self.peer.peer_id:
-			raise ValueError("remote peer id did not match")
+		self.peer_id = await self.reader.readexactly(20)
 		
-		print(f"handshook with {self.peer}")
+		print(f"handshook with {self.peer} {self.peer_id}")
 
 		await self._send_message(MsgType.BITFIELD, self.ts.saved_pieces.buffer)
 	
@@ -115,13 +120,13 @@ class PeerSession:
 		while True:
 			msg_len = int.from_bytes(await self.reader.readexactly(4), "big")
 			if msg_len == 0:
-				print("keepalive")
+				print(self.peer, "keepalive")
 				continue
 			
 			msgtype = MsgType((await self.reader.readexactly(1))[0])
 			payload = await self.reader.readexactly(msg_len - 1)
 
-			print("recvd", msgtype)
+			print(self.peer, "recvd", msgtype)
 			
 			if msgtype == MsgType.CHOKE:
 				assert(len(payload) == 0)
@@ -150,7 +155,7 @@ class PeerSession:
 				piece = payload[8:]
 				request = (index, begin, len(piece))
 				if request not in self.inflight_requests:
-					print("received a piece we weren't expecting, discarding")
+					print(self.peer, "received a piece we weren't expecting, discarding")
 					continue
 				self.inflight_requests[request].put_nowait(piece)
 			elif msgtype == MsgType.CANCEL:
