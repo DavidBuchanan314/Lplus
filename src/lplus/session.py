@@ -72,7 +72,7 @@ class TorrentSession:
 			pass
 		print("shutting down peer connections")
 		for peerinfo, ses in list(self.peer_sessions.items()): # avoid modification during iteration!
-			await ses.__aexit__()
+			await ses.__aexit__(None, None, None)
 			del self.peer_sessions[peerinfo]
 	
 	def lplus_ratio(self) -> float:

@@ -83,6 +83,10 @@ class PeerSession:
 			await self.recv_task
 		except asyncio.CancelledError:
 			pass
+		except asyncio.exceptions.IncompleteReadError:
+			pass # because we closed the socket
+		except Exception as e:
+			print(self.peer, e)
 
 	async def _connect(self) -> None:
 		self.reader, self.writer = await asyncio.open_connection(self.peer.ip_addr, self.peer.port)
