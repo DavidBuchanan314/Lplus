@@ -77,14 +77,11 @@ class PeerSession:
 			return self
 
 	async def __aexit__(self, exc_type, exc, tb):
-		self.writer.close()
 		self.recv_task.cancel()
 		try:
 			await self.recv_task
 		except asyncio.CancelledError:
 			pass
-		except asyncio.exceptions.IncompleteReadError:
-			pass # because we closed the socket
 		except Exception as e:
 			print(self.peer, e)
 
@@ -121,48 +118,51 @@ class PeerSession:
 		await self.writer.drain()
 
 	async def _recvloop(self):
-		while True:
-			msg_len = int.from_bytes(await self.reader.readexactly(4), "big")
-			if msg_len == 0:
-				print(self.peer, "keepalive")
-				continue
-			
-			msgtype = MsgType((await self.reader.readexactly(1))[0])
-			payload = await self.reader.readexactly(msg_len - 1)
-
-			print(self.peer, "recvd", msgtype)
-			
-			if msgtype == MsgType.CHOKE:
-				assert(len(payload) == 0)
-				self.peer_choked = True
-			elif msgtype == MsgType.UNCHOKE:
-				assert(len(payload) == 0)
-				self.peer_choked = False
-			elif msgtype == MsgType.INTERESTED:
-				assert(len(payload) == 0)
-				self.peer_interested = True
-			elif msgtype == MsgType.NOT_INTERESTED:
-				assert(len(payload) == 0)
-				self.peer_interested = False
-			elif msgtype == MsgType.HAVE:
-				assert(len(payload) == 4)
-				have_piece = int.from_bytes(payload, "big")
-				self.peer_pieces[have_piece] = True
-			elif msgtype == MsgType.BITFIELD:
-				assert(len(payload) == len(self.peer_pieces.buffer))
-				self.peer_pieces.set_buffer(bytearray(payload))
-			elif msgtype == MsgType.REQUEST:
-				pass # TODO: respond to requests!!!
-			elif msgtype == MsgType.PIECE:
-				index = int.from_bytes(payload[:4], "big")
-				begin = int.from_bytes(payload[4:8], "big")
-				piece = payload[8:]
-				request = (index, begin, len(piece))
-				if request not in self.inflight_requests:
-					print(self.peer, "received a piece we weren't expecting, discarding")
+		try:
+			while True:
+				msg_len = int.from_bytes(await self.reader.readexactly(4), "big")
+				if msg_len == 0:
+					print(self.peer, "keepalive")
 					continue
-				self.inflight_requests[request].put_nowait(piece)
-			elif msgtype == MsgType.CANCEL:
-				pass # TODO: care about this
-			else:
-				raise NotImplementedError(f"unreachable??? {msgtype}")
+				
+				msgtype = MsgType((await self.reader.readexactly(1))[0])
+				payload = await self.reader.readexactly(msg_len - 1)
+
+				print(self.peer, "recvd", msgtype)
+				
+				if msgtype == MsgType.CHOKE:
+					assert(len(payload) == 0)
+					self.peer_choked = True
+				elif msgtype == MsgType.UNCHOKE:
+					assert(len(payload) == 0)
+					self.peer_choked = False
+				elif msgtype == MsgType.INTERESTED:
+					assert(len(payload) == 0)
+					self.peer_interested = True
+				elif msgtype == MsgType.NOT_INTERESTED:
+					assert(len(payload) == 0)
+					self.peer_interested = False
+				elif msgtype == MsgType.HAVE:
+					assert(len(payload) == 4)
+					have_piece = int.from_bytes(payload, "big")
+					self.peer_pieces[have_piece] = True
+				elif msgtype == MsgType.BITFIELD:
+					assert(len(payload) == len(self.peer_pieces.buffer))
+					self.peer_pieces.set_buffer(bytearray(payload))
+				elif msgtype == MsgType.REQUEST:
+					pass # TODO: respond to requests!!!
+				elif msgtype == MsgType.PIECE:
+					index = int.from_bytes(payload[:4], "big")
+					begin = int.from_bytes(payload[4:8], "big")
+					piece = payload[8:]
+					request = (index, begin, len(piece))
+					if request not in self.inflight_requests:
+						print(self.peer, "received a piece we weren't expecting, discarding")
+						continue
+					self.inflight_requests[request].put_nowait(piece)
+				elif msgtype == MsgType.CANCEL:
+					pass # TODO: care about this
+				else:
+					raise NotImplementedError(f"unreachable??? {msgtype}")
+		finally:
+			self.writer.close()
