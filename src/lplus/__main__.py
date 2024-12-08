@@ -12,8 +12,8 @@ async def main():
 			print("connected to peer")
 			await ps.set_interested(True)
 			print("said we're interested")
-			await ps.set_choked(False)
-			print("said we're unchoked")
+			#await ps.set_choked(False)
+			#print("said we're unchoked")
 			while True:
 				ts.print_status()
 				await asyncio.sleep(1)

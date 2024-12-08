@@ -43,17 +43,17 @@ class PeerSession:
 
 		self.inflight_requests: Dict[Tuple[int, int, int], asyncio.Queue[bytes]] = {} # (index, begin, length)
 
-	async def request(self, index: int, begin: int, length: int) -> bytes:
+	async def request(self, index: int, begin: int, length: int, timeout: int=10) -> bytes:
 		req = (index, begin, length)
 		if req in self.inflight_requests:
 			raise Exception("there's a request for that already in-flight")
 		q = asyncio.Queue()
 		self.inflight_requests[req] = q
 		try:
-			# TODO: wrap in timeout?
-			await self._send_message(MsgType.REQUEST, b"".join(i.to_bytes(4, "big") for i in req))
-			print("sent request for piece")
-			return await q.get()
+			async with asyncio.timeout(timeout):
+				await self._send_message(MsgType.REQUEST, b"".join(i.to_bytes(4, "big") for i in req))
+				print("sent request for piece")
+				return await q.get()
 		finally:
 			del self.inflight_requests[req]
 
@@ -141,7 +141,7 @@ class PeerSession:
 				self.peer_pieces[have_piece] = True
 			elif msgtype == MsgType.BITFIELD:
 				assert(len(payload) == len(self.peer_pieces.buffer))
-				self.peer_pieces.buffer = bytearray(payload) # XXX: this invalidates the num_bits_set counter!!!
+				self.peer_pieces.set_buffer(bytearray(payload))
 			elif msgtype == MsgType.REQUEST:
 				pass # TODO: respond to requests!!!
 			elif msgtype == MsgType.PIECE:
